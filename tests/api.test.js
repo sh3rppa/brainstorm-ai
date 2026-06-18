@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 
 const port = 4187;
-const child = spawn(process.execPath, ["server.ts"], {
+const child = spawn(process.execPath, ["backend/server.ts"], {
   cwd: new URL("..", import.meta.url),
   env: { ...process.env, PORT: String(port) },
   stdio: ["ignore", "pipe", "pipe"],

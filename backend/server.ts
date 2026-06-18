@@ -35,7 +35,7 @@ type BrainstormSession = {
   updatedAt: string;
 };
 
-const root = fileURLToPath(new URL(".", import.meta.url));
+const root = fileURLToPath(new URL("../", import.meta.url));
 const publicDir = join(root, "public");
 const dataDir = join(root, "data");
 const dataFile = join(dataDir, "sessions.local.json");const port = Number(process.env.PORT ?? 4173);
