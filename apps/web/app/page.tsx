@@ -19,8 +19,17 @@ export default function Home() {
 
           <div className="mt-10 flex flex-col gap-4 sm:flex-row">
             <a
-              href="#demo"
+              href="http://localhost:4173"
+              target="_blank"
+              rel="noreferrer"
               className="rounded-xl bg-[#8b5cf6] px-6 py-4 text-center text-sm font-bold text-white transition hover:bg-[#7c3aed]"
+            >
+              Open working MVP
+            </a>
+
+            <a
+              href="#demo"
+              className="rounded-xl border border-zinc-700 px-6 py-4 text-center text-sm font-bold text-zinc-200 transition hover:border-zinc-400"
             >
               View product flow
             </a>
@@ -73,9 +82,11 @@ export default function Home() {
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-[#8b5cf6]">
             MVP flow
           </p>
+
           <h2 className="mt-4 text-3xl font-black tracking-tight">
             Record → draw → process → review results
           </h2>
+
           <p className="mt-4 max-w-2xl text-zinc-400">
             The current local MVP already proves the core flow. This Next.js app
             will become the production web interface without destroying the
