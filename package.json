@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node backend/server.ts",
-    "check": "node --check backend/server.ts && node --check public/app.js",
+    "check": "node --check backend/server.ts && node --check frontend/public/app.js",
     "test": "node tests/api.test.js"
   },
   "engines": {
