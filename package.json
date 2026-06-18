@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node backend/server.ts",
     "check": "node --check backend/server.ts && node --check frontend/public/app.js",
-    "test": "node tests/api.test.js"
+    "test": "node tests/api.test.js",
+    "web:dev": "npm --prefix apps/web run dev",
+    "web:build": "npm --prefix apps/web run build",
+    "web:lint": "npm --prefix apps/web run lint"
   },
   "engines": {
     "node": ">=22"
