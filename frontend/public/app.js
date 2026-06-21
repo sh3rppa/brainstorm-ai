@@ -14,7 +14,15 @@ const state = {
 };
 
 const DEFAULT_SESSION_TITLE = "Untitled brainstorm";
-const icons = { home: "⌂", sessions: "◫", team: "◉", settings: "⚙" };
+const icons = {
+  home: "⌂",
+  sessions: "◫",
+  team: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path d="M20 21a8 8 0 0 0-16 0" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>`,
+  settings: "⚙",
+};
 const app = document.querySelector("#app");
 const toast = document.querySelector("#toast");
 
@@ -109,7 +117,7 @@ function shell(content, title = "Your thinking space", eyebrow = "Brainstorm AI"
   return `
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="brand-mark">✦</span><span class="brand-name">Brainstorm AI</span></div>
+        <button class="brand" type="button" data-route="home" aria-label="Go to Home"><span class="brand-mark">✦</span><span class="brand-name">Brainstorm AI</span></button>
         <nav class="nav" aria-label="Primary navigation">
           ${navButton("home", "Home", current === "home")}
           ${navButton("sessions", "Sessions", current === "sessions" || current === "session" || current === "results" || current === "processing")}
@@ -133,7 +141,10 @@ function shell(content, title = "Your thinking space", eyebrow = "Brainstorm AI"
 }
 
 function navButton(route, label, active) {
-  return `<button class="nav-button ${active ? "active" : ""}" data-route="${route}"><span class="nav-icon">${icons[route]}</span><span class="nav-label">${label}</span></button>`;
+  return `<button class="nav-button ${active ? "active" : ""}" data-route="${route}">
+    <span class="nav-icon">${icons[route]}</span>
+    <span class="nav-label">${escapeHtml(label)}</span>
+  </button>`;
 }
 
 function sessionCard(session) {
@@ -141,7 +152,15 @@ function sessionCard(session) {
   const summary = session.aiOutput?.summary || (session.notes?.[0] ?? "A fresh space for the next useful idea.");
   return `
     <article class="session-card" data-open-session="${escapeHtml(session.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(session.title)}">
-      <div class="card-top"><span class="status ${session.status}"><i class="dot"></i>${escapeHtml(status)}</span><span class="card-date">${formatDate(session.updatedAt)}</span></div>
+      <div class="card-top">
+        <span class="status ${session.status}"><i class="dot"></i>${escapeHtml(status)}</span>
+        <div class="card-actions">
+          <span class="card-date">${formatDate(session.updatedAt)}</span>
+          <button class="session-delete" type="button" data-delete-session="${escapeHtml(session.id)}" data-delete-session-title="${escapeHtml(session.title)}" aria-label="Delete session ${escapeHtml(session.title)}" title="Delete session">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-.7 11H7.7L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"/></svg>
+          </button>
+        </div>
+      </div>
       <h3>${escapeHtml(session.title)}</h3>
       <p>${escapeHtml(summary.slice(0, 105))}${summary.length > 105 ? "…" : ""}</p>
       <div class="card-foot"><span>${formatDuration(session.durationSeconds)}</span><span>${session.notes?.length || 0} notes&nbsp; →</span></div>
@@ -165,6 +184,39 @@ function clock(seconds) {
 async function loadSessions() {
   await state.pendingTitleSave;
   state.sessions = await api("/sessions");
+}
+
+async function deleteSession(sessionId, sessionTitle) {
+  if (!window.confirm(`Delete "${sessionTitle}"? This cannot be undone.`)) return;
+
+  try {
+    await state.pendingTitleSave;
+    await api(`/sessions/${sessionId}`, { method: "DELETE" });
+    state.sessions = state.sessions.filter((session) => session.id !== sessionId);
+
+    const deletedActiveSession = state.activeSession?.id === sessionId;
+    const deletedOpenRoute = state.route.split("/")[1] === sessionId;
+    if (deletedActiveSession) {
+      if (state.recording) stopRecordingSilently();
+      state.activeSession = null;
+      state.notes = [];
+      state.seconds = 0;
+      state.canvas.snapshot = null;
+      state.canvas.hasMarks = false;
+    }
+
+    showToast("Session deleted.");
+
+    if (deletedOpenRoute) {
+      navigate("home");
+    } else if (state.route === "sessions") {
+      await renderSessions();
+    } else {
+      await renderHome();
+    }
+  } catch (error) {
+    showToast(`Could not delete the session. ${error.message}`);
+  }
 }
 
 async function renderHome() {
@@ -536,6 +588,10 @@ document.addEventListener("click", async (event) => {
   if (!target) return;
   if (target.dataset.route) navigate(target.dataset.route);
   else if (target.dataset.newSession !== undefined) await createSession();
+  else if (target.dataset.deleteSession) {
+    event.stopPropagation();
+    await deleteSession(target.dataset.deleteSession, target.dataset.deleteSessionTitle || "this session");
+  }
   else if (target.dataset.openSession) await openSession(target.dataset.openSession);
   else if (target.dataset.record !== undefined) await toggleRecording();
   else if (target.dataset.addNote !== undefined) addNote();
