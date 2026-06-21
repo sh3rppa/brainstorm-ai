@@ -9,9 +9,11 @@ const state = {
   recorder: null,
   stream: null,
   resultTab: "summary",
+  pendingTitleSave: Promise.resolve(),
   canvas: { tool: "pen", color: "#181815", size: 3, drawing: false, hasMarks: false, snapshot: null },
 };
 
+const DEFAULT_SESSION_TITLE = "Untitled brainstorm";
 const icons = { home: "⌂", sessions: "◫", team: "◉", settings: "⚙" };
 const app = document.querySelector("#app");
 const toast = document.querySelector("#toast");
@@ -32,6 +34,63 @@ function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
 }
 
+function normalizeSessionTitle(value) {
+  return String(value ?? "").trim() || DEFAULT_SESSION_TITLE;
+}
+
+function editableTitle(title) {
+  return `<input id="page-title-input" class="page-title-input" value="${escapeHtml(normalizeSessionTitle(title))}" maxlength="100" aria-label="Session title" data-session-title autocomplete="off">`;
+}
+
+function updateSessionTitleInState(sessionId, title) {
+  if (state.activeSession?.id === sessionId) {
+    state.activeSession = { ...state.activeSession, title };
+  }
+  state.sessions = state.sessions.map((session) => session.id === sessionId ? { ...session, title } : session);
+}
+
+function saveSessionTitle(sessionId, value) {
+  const title = normalizeSessionTitle(value);
+  const currentSession = state.activeSession?.id === sessionId
+    ? state.activeSession
+    : state.sessions.find((session) => session.id === sessionId);
+  const previousTitle = normalizeSessionTitle(currentSession?.title);
+
+  document.querySelectorAll("[data-session-title]").forEach((input) => {
+    input.value = title;
+  });
+
+  if (title === previousTitle) return state.pendingTitleSave;
+
+  updateSessionTitleInState(sessionId, title);
+  const operation = state.pendingTitleSave.then(async () => {
+    try {
+      const updated = await api(`/sessions/${sessionId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      });
+      if (state.activeSession?.id === sessionId && state.activeSession.title === title) {
+        state.activeSession = { ...state.activeSession, ...updated };
+      }
+      state.sessions = state.sessions.map((session) => (
+        session.id === sessionId && session.title === title ? { ...session, ...updated } : session
+      ));
+      return updated;
+    } catch (error) {
+      if (state.activeSession?.id === sessionId && state.activeSession.title === title) {
+        updateSessionTitleInState(sessionId, previousTitle);
+        document.querySelectorAll("[data-session-title]").forEach((input) => {
+          input.value = previousTitle;
+        });
+      }
+      showToast(`Could not save the session title. ${error.message}`);
+      throw error;
+    }
+  });
+  state.pendingTitleSave = operation.catch(() => {});
+  return operation;
+}
+
 function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
@@ -44,8 +103,9 @@ function navigate(route) {
   location.hash = route;
 }
 
-function shell(content, title = "Your thinking space", eyebrow = "Brainstorm AI") {
+function shell(content, title = "Your thinking space", eyebrow = "Brainstorm AI", options = {}) {
   const current = state.route.split("/")[0];
+  const pageTitle = options.editableTitle ? editableTitle(title) : `<h1>${escapeHtml(title)}</h1>`;
   return `
     <div class="app-shell">
       <aside class="sidebar">
@@ -64,7 +124,7 @@ function shell(content, title = "Your thinking space", eyebrow = "Brainstorm AI"
       </aside>
       <main class="main">
         <header class="topbar">
-          <div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h1>${escapeHtml(title)}</h1></div>
+          <div><p class="eyebrow">${escapeHtml(eyebrow)}</p>${pageTitle}</div>
           <div class="top-actions"><button class="btn ghost" data-route="sessions">Browse sessions</button><div class="avatar" title="Alex Morgan">AM</div></div>
         </header>
         <div class="page">${content}</div>
@@ -103,6 +163,7 @@ function clock(seconds) {
 }
 
 async function loadSessions() {
+  await state.pendingTitleSave;
   state.sessions = await api("/sessions");
 }
 
@@ -146,6 +207,7 @@ async function createSession() {
 }
 
 async function loadSession(id) {
+  await state.pendingTitleSave;
   const changedSession = state.activeSession?.id !== id;
   state.activeSession = await api(`/sessions/${id}`);
   state.notes = [...(state.activeSession.notes || [])];
@@ -193,14 +255,13 @@ async function renderCapture(id) {
         <div class="note-form"><input id="note-input" placeholder="Add a thought…" maxlength="220" aria-label="Quick note"><button class="btn small primary" data-add-note>Add</button></div>
         <div class="notes-list">${renderNotes()}</div>
         <div class="notes-footer">
-          <input id="title-input" class="title-input" value="${escapeHtml(session.title)}" maxlength="100" aria-label="Session title">
           <button class="btn ${state.recording ? "danger" : "primary"}" data-record>${state.recording ? "■ Stop recording" : "● Start recording"}</button>
           <button class="btn acid" data-finish>Finish & process <span>→</span></button>
           <div class="privacy-note">Audio capture stays in memory for this local MVP and is never stored. Production adapters enforce the 72-hour retention rule.</div>
         </div>
       </aside>
     </section>
-  `, "Live session", escapeHtml(session.title));
+  `, session.title, "Live session", { editableTitle: true });
   setupCanvas(state.canvas.snapshot || session.canvasData);
 }
 
@@ -331,7 +392,8 @@ function stopRecordingSilently() {
 }
 
 async function finishSession() {
-  const title = document.querySelector("#title-input")?.value.trim() || "Untitled brainstorm";
+  const title = normalizeSessionTitle(document.querySelector("[data-session-title]")?.value ?? state.activeSession.title);
+  await saveSessionTitle(state.activeSession.id, title);
   if (state.recording) {
     stopRecordingSilently();
   }
@@ -365,14 +427,16 @@ async function renderProcessing(id) {
         <small style="color:var(--muted)">This local demo usually takes about two seconds.</small>
       </div>
     </section>
-  `, "Making sense of it", escapeHtml(session.title));
+  `, "Making sense of it", session.title);
   setTimeout(async () => {
     if (state.route === `processing/${id}`) await renderProcessing(id);
   }, 900);
 }
 
 async function renderResults(id) {
-  const session = await loadSession(id);
+  const session = state.activeSession?.id === id && state.activeSession.aiOutput
+    ? state.activeSession
+    : await loadSession(id);
   if (!session.aiOutput) {
     navigate(`processing/${id}`);
     return;
@@ -380,7 +444,7 @@ async function renderResults(id) {
   const output = session.aiOutput;
   app.innerHTML = shell(`
     <div class="result-header">
-      <div><p class="eyebrow">Session complete</p><h1>${escapeHtml(session.title)}</h1></div>
+      <div><p class="eyebrow">Session complete</p>${editableTitle(session.title)}</div>
       <div class="top-actions"><button class="btn" data-copy-result>Copy brief</button><button class="btn acid" data-new-session>＋ New session</button></div>
     </div>
     <div class="result-tabs" role="tablist">
@@ -509,7 +573,17 @@ document.addEventListener("click", async (event) => {
 
 document.addEventListener("keydown", async (event) => {
   if (event.key === "Enter" && event.target.id === "note-input") addNote();
-  if ((event.key === "Enter" || event.key === " ") && event.target.dataset.openSession) await openSession(event.target.dataset.openSession);
+  else if (event.key === "Enter" && event.target.matches("[data-session-title]")) {
+    event.preventDefault();
+    event.target.blur();
+  } else if ((event.key === "Enter" || event.key === " ") && event.target.dataset.openSession) {
+    await openSession(event.target.dataset.openSession);
+  }
+});
+
+document.addEventListener("focusout", async (event) => {
+  if (!event.target.matches("[data-session-title]") || !state.activeSession) return;
+  await saveSessionTitle(state.activeSession.id, event.target.value).catch(() => {});
 });
 
 function addNote() {
@@ -522,8 +596,10 @@ function addNote() {
 }
 
 function preserveCaptureInputs() {
-  const title = document.querySelector("#title-input")?.value.trim();
-  if (title && state.activeSession) state.activeSession.title = title;
+  const titleInput = document.querySelector("[data-session-title]");
+  if (titleInput && state.activeSession) {
+    updateSessionTitleInState(state.activeSession.id, normalizeSessionTitle(titleInput.value));
+  }
   const canvas = document.querySelector("#brain-canvas");
   if (canvas && state.canvas.hasMarks) state.canvas.snapshot = canvas.toDataURL("image/png");
 }
