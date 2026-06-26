@@ -125,6 +125,14 @@ export function CaptureWorkspace({ session }: CaptureWorkspaceProps) {
             <span className={`record-dot ${recording ? "live" : ""}`} />
             <span>{recording ? "Recording session" : "Ready when you are"}</span>
           </div>
+          <input
+            aria-label="Session title"
+            className="session-title-input"
+            maxLength={100}
+            onBlur={saveTitle}
+            onChange={(event) => setTitle(event.target.value)}
+            value={title}
+          />
           <div className="timer" id="timer">
             {formatClock(seconds)}
           </div>

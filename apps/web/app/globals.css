@@ -554,10 +554,43 @@ h2 {
 
 .session-bar {
   align-items: center;
-  display: flex;
+  display: grid;
   gap: 12px;
-  justify-content: space-between;
+  grid-template-columns: auto minmax(180px, 1fr) auto;
   padding: 4px 4px 12px;
+}
+
+.session-title-input,
+.result-title-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--ink);
+  font-weight: 850;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.session-title-input {
+  font-size: clamp(18px, 2vw, 25px);
+  justify-self: stretch;
+}
+
+.result-title-input {
+  display: block;
+  font-size: clamp(31px, 4vw, 52px);
+  letter-spacing: -0.065em;
+  line-height: 0.98;
+  max-width: 800px;
+  width: min(800px, 100%);
+}
+
+.session-title-input:hover,
+.session-title-input:focus,
+.result-title-input:hover,
+.result-title-input:focus {
+  background: #fbfaf6;
+  border-color: var(--line);
 }
 
 .record-state {
@@ -610,6 +643,8 @@ h2 {
   cursor: crosshair;
   display: block;
   height: 100%;
+  inset: 0;
+  position: absolute;
   touch-action: none;
   width: 100%;
 }
@@ -1330,6 +1365,14 @@ h2 {
 
   .notes-panel {
     min-height: 350px;
+  }
+
+  .session-bar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .record-state {
+    grid-column: 1 / -1;
   }
 
   .result-header {

@@ -19,8 +19,23 @@ type ResultsViewProps = {
 export function ResultsView({ session }: ResultsViewProps) {
   const [tab, setTab] = useState<ResultTab>("summary");
   const [busy, setBusy] = useState(false);
+  const [title, setTitle] = useState(session.title);
   const router = useRouter();
   const output = session.aiOutput;
+
+  async function saveTitle(): Promise<void> {
+    const nextTitle = title.trim() || "Untitled brainstorm";
+    setTitle(nextTitle);
+    try {
+      await apiJson<BrainstormSession>(`/sessions/${session.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: nextTitle }),
+      });
+      router.refresh();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Could not save the title.");
+    }
+  }
 
   async function copyBrief(): Promise<void> {
     if (!output) return;
@@ -49,7 +64,14 @@ export function ResultsView({ session }: ResultsViewProps) {
       <div className="result-header">
         <div>
           <p className="eyebrow">Session complete</p>
-          <h1>{session.title}</h1>
+          <input
+            aria-label="Session title"
+            className="result-title-input"
+            maxLength={100}
+            onBlur={saveTitle}
+            onChange={(event) => setTitle(event.target.value)}
+            value={title}
+          />
         </div>
         <div className="top-actions">
           <button className="btn" onClick={copyBrief} type="button">

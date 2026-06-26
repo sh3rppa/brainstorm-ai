@@ -44,18 +44,17 @@ export function CanvasBoard({ initialCanvasData, onCanvasDataChange }: CanvasBoa
       const context = canvas.getContext("2d");
       if (!context) return;
       const ratio = window.devicePixelRatio || 1;
-      const rect = wrap.getBoundingClientRect();
-      const savedImage = imageRef.current || canvas.toDataURL("image/png");
+      const width = wrap.clientWidth;
+      const height = wrap.clientHeight;
+      const savedImage = imageRef.current;
 
-      canvas.width = Math.max(1, Math.round(rect.width * ratio));
-      canvas.height = Math.max(1, Math.round(rect.height * ratio));
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
+      canvas.width = Math.max(1, Math.round(width * ratio));
+      canvas.height = Math.max(1, Math.round(height * ratio));
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.lineCap = "round";
       context.lineJoin = "round";
 
-      if (savedImage) drawImage(context, savedImage, rect.width, rect.height);
+      if (savedImage) drawImage(context, savedImage, width, height);
     };
 
     const observer = new ResizeObserver(resizeCanvas);
