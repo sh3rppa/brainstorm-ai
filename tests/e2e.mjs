@@ -9,7 +9,7 @@ const { chromium } = await import(pathToFileURL(playwrightPath).href);
 
 const port = 4190;
 const origin = `http://localhost:${port}`;
-const server = spawn(process.execPath, ["backend/server.ts"], {
+const server = spawn(process.execPath, ["server.ts"], {
   cwd: fileURLToPath(new URL("..", import.meta.url)),
   env: { ...process.env, PORT: String(port) },
   stdio: ["ignore", "pipe", "pipe"],

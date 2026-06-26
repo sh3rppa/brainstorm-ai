@@ -4,12 +4,12 @@ import { listSessions } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function SessionsPage() {
   const sessions = await listSessions();
 
   return (
-    <AppShell>
-      <SessionListClient initialSessions={sessions} limit={3} mode="home" />
+    <AppShell eyebrow="Your work" title="Session library">
+      <SessionListClient initialSessions={sessions} mode="library" />
     </AppShell>
   );
 }
