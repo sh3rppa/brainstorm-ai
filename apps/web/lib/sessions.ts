@@ -24,7 +24,8 @@ export type FinalizeSessionInput = {
 
 const validStatuses = new Set<SessionStatus>(["draft", "recording", "processing", "done"]);
 const root = process.cwd().endsWith(`${sep}apps${sep}web`) ? join(process.cwd(), "..", "..") : process.cwd();
-const dataDir = process.env.BRAINSTORM_DATA_DIR ?? join(root, "data");
+const isVercel = Boolean(process.env.VERCEL);
+const dataDir = process.env.BRAINSTORM_DATA_DIR ?? (isVercel ? "/tmp/brainstorm-ai-data" : join(root, "data"));
 const dataFile = join(dataDir, "sessions.json");
 
 const sampleSessions: BrainstormSession[] = [
