@@ -101,8 +101,24 @@ export async function createSession(input: CreateSessionInput): Promise<Brainsto
 
 export async function updateSession(id: string, input: UpdateSessionInput): Promise<BrainstormSession | null> {
   const sessions = await readSessions();
-  const index = sessions.findIndex((session) => session.id === id);
-  if (index < 0) return null;
+  let index = sessions.findIndex((session) => session.id === id);
+
+  if (index < 0) {
+    const now = new Date().toISOString();
+    sessions.push({
+      id,
+      title: "Untitled brainstorm",
+      status: "draft",
+      durationSeconds: 0,
+      notes: [],
+      canvasData: null,
+      transcript: "",
+      aiOutput: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    index = sessions.length - 1;
+  }
 
   const current = sessions[index];
   const title = input.title === undefined ? current.title : sanitizeText(input.title, current.title) || current.title;
@@ -143,8 +159,24 @@ export async function finalizeSession(
   input: FinalizeSessionInput,
 ): Promise<BrainstormSession | null> {
   const sessions = await readSessions();
-  const index = sessions.findIndex((session) => session.id === id);
-  if (index < 0) return null;
+  let index = sessions.findIndex((session) => session.id === id);
+
+  if (index < 0) {
+    const now = new Date().toISOString();
+    sessions.push({
+      id,
+      title: "Untitled brainstorm",
+      status: "draft",
+      durationSeconds: 0,
+      notes: [],
+      canvasData: null,
+      transcript: "",
+      aiOutput: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    index = sessions.length - 1;
+  }
 
   const current = sessions[index];
   const notes = input.notes ? sanitizeNotes(input.notes) : current.notes;
@@ -174,8 +206,26 @@ export async function finalizeSession(
 export async function completeProcessingSession(id: string): Promise<void> {
   await wait(1800);
   const sessions = await readSessions();
-  const index = sessions.findIndex((session) => session.id === id);
-  if (index < 0 || sessions[index].status !== "processing") return;
+  let index = sessions.findIndex((session) => session.id === id);
+
+  if (index < 0) {
+    const now = new Date().toISOString();
+    sessions.push({
+      id,
+      title: "Untitled brainstorm",
+      status: "processing",
+      durationSeconds: 0,
+      notes: [],
+      canvasData: null,
+      transcript: "Brainstorming session for Untitled brainstorm.",
+      aiOutput: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    index = sessions.length - 1;
+  }
+
+  if (sessions[index].status !== "processing") return;
 
   const current = sessions[index];
   sessions[index] = {
