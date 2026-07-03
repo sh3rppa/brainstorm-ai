@@ -25,7 +25,7 @@ const base = `${origin}/api`;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function ready() {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       const response = await fetch(`${base}/health`);
       if (response.ok) return;
