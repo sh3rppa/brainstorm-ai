@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join, sep } from "node:path";
 
@@ -195,7 +195,8 @@ export async function finalizeSession(
     durationSeconds,
     canvasData,
     transcript: notes.length > 0 ? notes.join(" ") : `Brainstorming session for ${current.title}.`,
-    status: "processing",
+    aiOutput: buildOutput(current.title, notes),
+    status: "done",
     updatedAt: new Date().toISOString(),
   };
 
@@ -372,3 +373,4 @@ function wait(milliseconds: number): Promise<void> {
     setTimeout(resolve, milliseconds);
   });
 }
+

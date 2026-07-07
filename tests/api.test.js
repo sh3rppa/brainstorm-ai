@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -67,7 +67,7 @@ try {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ notes: patched.notes, durationSeconds: 42 }),
   }).then((response) => response.json());
-  assert.equal(finalized.status, "processing");
+  assert.equal(finalized.status, "done");
 
   await wait(2200);
   const complete = await fetch(`${base}/sessions/${created.id}`).then((response) => response.json());
@@ -77,7 +77,8 @@ try {
   assert.equal((await fetch(`${origin}/results/${created.id}`)).status, 200);
   const removed = await fetch(`${base}/sessions/${created.id}`, { method: "DELETE" }).then((response) => response.json());
   assert.equal(removed.deleted, true);
-  console.log("API flow passed: create → update → process → results");
+  console.log("API flow passed: create â†’ update â†’ process â†’ results");
 } finally {
   child.kill();
 }
+
