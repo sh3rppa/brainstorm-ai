@@ -5,3 +5,6 @@ node_modules/
 
 data/sessions.local.json
 qa/
+.vercel/
+.env*
+!.env.example

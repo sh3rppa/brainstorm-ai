@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SessionStatus {
+  draft
+  recording
+  processing
+  done
+}
+
+model Session {
+  id              String        @id @default(uuid())
+  title           String        @db.Text
+  status          SessionStatus @default(draft)
+  durationSeconds Int           @default(0) @map("duration_seconds")
+  notes           Json          @default("[]")
+  canvasData      String?       @map("canvas_data") @db.Text
+  transcript      String        @default("") @db.Text
+  aiOutput        Json?         @map("ai_output")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([updatedAt])
+  @@map("sessions")
+}

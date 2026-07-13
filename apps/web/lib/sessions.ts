@@ -1,8 +1,7 @@
-﻿import { randomUUID } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { Prisma, type Session as SessionRecord } from "@prisma/client";
 
-import type { AiOutput, BrainstormSession, SessionStatus } from "@/types/domain";
+import { getPrisma } from "@/lib/prisma";
+import type { AiOutput, BrainstormSession, Idea, IdeaPriority, SessionStatus } from "@/types/domain";
 
 export type CreateSessionInput = {
   title?: string;
@@ -23,219 +22,111 @@ export type FinalizeSessionInput = {
 };
 
 const validStatuses = new Set<SessionStatus>(["draft", "recording", "processing", "done"]);
-const root = process.cwd().endsWith(`${sep}apps${sep}web`) ? join(process.cwd(), "..", "..") : process.cwd();
-const isVercel = Boolean(process.env.VERCEL);
-const dataDir = process.env.BRAINSTORM_DATA_DIR ?? (isVercel ? "/tmp/brainstorm-ai-data" : join(root, "data"));
-const dataFile = join(dataDir, "sessions.json");
-
-const sampleSessions: BrainstormSession[] = [
-  {
-    id: "sample-product-launch",
-    title: "Creator launch workspace",
-    status: "done",
-    durationSeconds: 1482,
-    notes: [
-      "Help small creator teams turn campaign ideas into a launch plan.",
-      "Prioritize momentum and clear ownership.",
-    ],
-    canvasData: null,
-    transcript:
-      "A launch workspace for small creator teams. It should turn scattered campaign ideas into a clear plan with owners, milestones, and reusable launch templates.",
-    aiOutput: buildOutput("Creator launch workspace", [
-      "Help small creator teams turn campaign ideas into a launch plan.",
-      "Prioritize momentum and clear ownership.",
-    ]),
-    createdAt: "2026-06-12T09:15:00.000Z",
-    updatedAt: "2026-06-12T09:41:00.000Z",
-  },
-  {
-    id: "sample-onboarding",
-    title: "New customer onboarding",
-    status: "done",
-    durationSeconds: 956,
-    notes: [
-      "Reduce the time from signup to first successful workflow.",
-      "Use a guided checklist with progress signals.",
-    ],
-    canvasData: null,
-    transcript:
-      "We need a calmer onboarding experience that guides a new customer to their first useful result without overwhelming them.",
-    aiOutput: buildOutput("New customer onboarding", [
-      "Reduce the time from signup to first successful workflow.",
-      "Use a guided checklist with progress signals.",
-    ]),
-    createdAt: "2026-06-10T14:20:00.000Z",
-    updatedAt: "2026-06-10T14:37:00.000Z",
-  },
-];
 
 export async function listSessions(): Promise<BrainstormSession[]> {
-  const sessions = await readSessions();
-  return [...sessions].sort((first, second) => second.updatedAt.localeCompare(first.updatedAt));
+  const sessions = await getPrisma().session.findMany({
+    orderBy: { updatedAt: "desc" },
+  });
+  return sessions.map(toBrainstormSession);
 }
 
 export async function getSession(id: string): Promise<BrainstormSession | null> {
-  const sessions = await readSessions();
-  return sessions.find((session) => session.id === id) ?? null;
+  const session = await getPrisma().session.findUnique({ where: { id } });
+  return session ? toBrainstormSession(session) : null;
 }
 
 export async function createSession(input: CreateSessionInput): Promise<BrainstormSession> {
-  const sessions = await readSessions();
-  const now = new Date().toISOString();
-  const session: BrainstormSession = {
-    id: randomUUID(),
-    title: sanitizeText(input.title, "Untitled brainstorm") || "Untitled brainstorm",
-    status: "draft",
-    durationSeconds: 0,
-    notes: [],
-    canvasData: null,
-    transcript: "",
-    aiOutput: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  sessions.push(session);
-  await writeSessions(sessions);
-  return session;
-}
-
-export async function updateSession(id: string, input: UpdateSessionInput): Promise<BrainstormSession | null> {
-  const sessions = await readSessions();
-  let index = sessions.findIndex((session) => session.id === id);
-
-  if (index < 0) {
-    const now = new Date().toISOString();
-    sessions.push({
-      id,
-      title: "Untitled brainstorm",
+  const session = await getPrisma().session.create({
+    data: {
+      title: sanitizeText(input.title, "Untitled brainstorm") || "Untitled brainstorm",
       status: "draft",
       durationSeconds: 0,
       notes: [],
       canvasData: null,
       transcript: "",
-      aiOutput: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    index = sessions.length - 1;
+    },
+  });
+  return toBrainstormSession(session);
+}
+
+export async function updateSession(id: string, input: UpdateSessionInput): Promise<BrainstormSession | null> {
+  const data: Prisma.SessionUpdateInput = {};
+
+  if (input.title !== undefined) {
+    data.title = sanitizeText(input.title, "Untitled brainstorm") || "Untitled brainstorm";
+  }
+  if (input.durationSeconds !== undefined) data.durationSeconds = sanitizeDuration(input.durationSeconds);
+  if (input.status && validStatuses.has(input.status)) data.status = input.status;
+  if (input.notes) data.notes = sanitizeNotes(input.notes) as Prisma.InputJsonValue;
+  if (input.canvasData !== undefined) {
+    data.canvasData = typeof input.canvasData === "string" ? input.canvasData.slice(0, 4_000_000) : null;
   }
 
-  const current = sessions[index];
-  const title = input.title === undefined ? current.title : sanitizeText(input.title, current.title) || current.title;
-  const durationSeconds =
-    input.durationSeconds === undefined ? current.durationSeconds : sanitizeDuration(input.durationSeconds);
-  const status = input.status && validStatuses.has(input.status) ? input.status : current.status;
-  const canvasData =
-    input.canvasData === undefined
-      ? current.canvasData
-      : typeof input.canvasData === "string"
-        ? input.canvasData.slice(0, 4_000_000)
-        : null;
-
-  sessions[index] = {
-    ...current,
-    title,
-    status,
-    durationSeconds,
-    notes: input.notes ? sanitizeNotes(input.notes) : current.notes,
-    canvasData,
-    updatedAt: new Date().toISOString(),
-  };
-
-  await writeSessions(sessions);
-  return sessions[index];
+  try {
+    const session = await getPrisma().session.update({
+      where: { id },
+      data,
+    });
+    return toBrainstormSession(session);
+  } catch (error) {
+    if (isRecordNotFound(error)) return null;
+    throw error;
+  }
 }
 
 export async function deleteSession(id: string): Promise<boolean> {
-  const sessions = await readSessions();
-  const nextSessions = sessions.filter((session) => session.id !== id);
-  if (nextSessions.length === sessions.length) return false;
-  await writeSessions(nextSessions);
-  return true;
+  const result = await getPrisma().session.deleteMany({ where: { id } });
+  return result.count > 0;
 }
 
 export async function finalizeSession(
   id: string,
   input: FinalizeSessionInput,
 ): Promise<BrainstormSession | null> {
-  const sessions = await readSessions();
-  let index = sessions.findIndex((session) => session.id === id);
+  return getPrisma().$transaction(async (tx) => {
+    const current = await tx.session.findUnique({ where: { id } });
+    if (!current) return null;
 
-  if (index < 0) {
-    const now = new Date().toISOString();
-    sessions.push({
-      id,
-      title: "Untitled brainstorm",
-      status: "draft",
-      durationSeconds: 0,
-      notes: [],
-      canvasData: null,
-      transcript: "",
-      aiOutput: null,
-      createdAt: now,
-      updatedAt: now,
+    const currentSession = toBrainstormSession(current);
+    const notes = input.notes ? sanitizeNotes(input.notes) : currentSession.notes;
+    const durationSeconds =
+      input.durationSeconds === undefined ? currentSession.durationSeconds : sanitizeDuration(input.durationSeconds);
+    const canvasData =
+      input.canvasData === undefined
+        ? currentSession.canvasData
+        : typeof input.canvasData === "string"
+          ? input.canvasData.slice(0, 4_000_000)
+          : null;
+
+    const session = await tx.session.update({
+      where: { id },
+      data: {
+        notes: notes as Prisma.InputJsonValue,
+        durationSeconds,
+        canvasData,
+        transcript: notes.length > 0 ? notes.join(" ") : `Brainstorming session for ${currentSession.title}.`,
+        aiOutput: buildOutput(currentSession.title, notes) as unknown as Prisma.InputJsonValue,
+        status: "done",
+      },
     });
-    index = sessions.length - 1;
-  }
 
-  const current = sessions[index];
-  const notes = input.notes ? sanitizeNotes(input.notes) : current.notes;
-  const durationSeconds =
-    input.durationSeconds === undefined ? current.durationSeconds : sanitizeDuration(input.durationSeconds);
-  const canvasData =
-    input.canvasData === undefined
-      ? current.canvasData
-      : typeof input.canvasData === "string"
-        ? input.canvasData.slice(0, 4_000_000)
-        : null;
-
-  sessions[index] = {
-    ...current,
-    notes,
-    durationSeconds,
-    canvasData,
-    transcript: notes.length > 0 ? notes.join(" ") : `Brainstorming session for ${current.title}.`,
-    aiOutput: buildOutput(current.title, notes),
-    status: "done",
-    updatedAt: new Date().toISOString(),
-  };
-
-  await writeSessions(sessions);
-  return sessions[index];
+    return toBrainstormSession(session);
+  });
 }
 
 export async function completeProcessingSession(id: string): Promise<void> {
   await wait(1800);
-  const sessions = await readSessions();
-  let index = sessions.findIndex((session) => session.id === id);
+  const current = await getPrisma().session.findUnique({ where: { id } });
+  if (!current || current.status !== "processing") return;
 
-  if (index < 0) {
-    const now = new Date().toISOString();
-    sessions.push({
-      id,
-      title: "Untitled brainstorm",
-      status: "processing",
-      durationSeconds: 0,
-      notes: [],
-      canvasData: null,
-      transcript: "Brainstorming session for Untitled brainstorm.",
-      aiOutput: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    index = sessions.length - 1;
-  }
-
-  if (sessions[index].status !== "processing") return;
-
-  const current = sessions[index];
-  sessions[index] = {
-    ...current,
-    aiOutput: buildOutput(current.title, current.notes),
-    status: "done",
-    updatedAt: new Date().toISOString(),
-  };
-  await writeSessions(sessions);
+  const session = toBrainstormSession(current);
+  await getPrisma().session.update({
+    where: { id },
+    data: {
+      aiOutput: buildOutput(session.title, session.notes) as unknown as Prisma.InputJsonValue,
+      status: "done",
+    },
+  });
 }
 
 export function buildOutput(title: string, notes: string[]): AiOutput {
@@ -309,24 +200,88 @@ export function normalizeFinalizeInput(body: Record<string, unknown>): FinalizeS
   };
 }
 
-async function ensureData(): Promise<void> {
-  await mkdir(dataDir, { recursive: true });
-  try {
-    await stat(dataFile);
-  } catch {
-    await writeSessions(sampleSessions);
-  }
+function toBrainstormSession(session: SessionRecord): BrainstormSession {
+  return {
+    id: session.id,
+    title: session.title,
+    status: statusFromDatabase(session.status),
+    durationSeconds: session.durationSeconds,
+    notes: notesFromJsonValue(session.notes),
+    canvasData: session.canvasData,
+    transcript: session.transcript,
+    aiOutput: aiOutputFromJsonValue(session.aiOutput),
+    createdAt: session.createdAt.toISOString(),
+    updatedAt: session.updatedAt.toISOString(),
+  };
 }
 
-async function readSessions(): Promise<BrainstormSession[]> {
-  await ensureData();
-  const parsed: unknown = JSON.parse(await readFile(dataFile, "utf8"));
-  return Array.isArray(parsed) ? (parsed as BrainstormSession[]) : [];
+function statusFromDatabase(value: string): SessionStatus {
+  return validStatuses.has(value as SessionStatus) ? (value as SessionStatus) : "draft";
 }
 
-async function writeSessions(sessions: BrainstormSession[]): Promise<void> {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(dataFile, JSON.stringify(sessions, null, 2), "utf8");
+function notesFromJsonValue(value: Prisma.JsonValue): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function aiOutputFromJsonValue(value: Prisma.JsonValue | null): AiOutput | null {
+  if (!isRecord(value)) return null;
+
+  const summary = typeof value.summary === "string" ? value.summary : null;
+  const keyIdeas = Array.isArray(value.keyIdeas)
+    ? value.keyIdeas.map(ideaFromJsonValue).filter((idea): idea is Idea => idea !== null)
+    : null;
+  const actionItems = stringArrayFromJsonValue(value.actionItems);
+  const diagram = diagramFromJsonValue(value.diagram);
+  const code = typeof value.code === "string" ? value.code : null;
+  const projectBrief = typeof value.projectBrief === "string" ? value.projectBrief : null;
+  const suggestedNextSteps = stringArrayFromJsonValue(value.suggestedNextSteps);
+
+  if (!summary || !keyIdeas || !actionItems || !diagram || !code || !projectBrief || !suggestedNextSteps) return null;
+
+  return {
+    summary,
+    keyIdeas,
+    actionItems,
+    diagram,
+    code,
+    projectBrief,
+    suggestedNextSteps,
+  };
+}
+
+function ideaFromJsonValue(value: unknown): Idea | null {
+  if (!isRecord(value)) return null;
+  const priority = value.priority;
+  if (priority !== "High" && priority !== "Medium" && priority !== "Low") return null;
+  if (typeof value.title !== "string" || typeof value.detail !== "string") return null;
+  return { title: value.title, detail: value.detail, priority: priority as IdeaPriority };
+}
+
+function diagramFromJsonValue(value: unknown): AiOutput["diagram"] | null {
+  if (!isRecord(value)) return null;
+  const nodes = stringArrayFromJsonValue(value.nodes);
+  const edges = Array.isArray(value.edges)
+    ? value.edges
+        .map((edge) =>
+          Array.isArray(edge) && edge.length === 2 && typeof edge[0] === "number" && typeof edge[1] === "number"
+            ? ([edge[0], edge[1]] as [number, number])
+            : null,
+        )
+        .filter((edge): edge is [number, number] => edge !== null)
+    : null;
+  return nodes && edges ? { nodes, edges } : null;
+}
+
+function stringArrayFromJsonValue(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecordNotFound(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
 }
 
 function sanitizeText(value: string | undefined, fallback = ""): string {
@@ -373,4 +328,3 @@ function wait(milliseconds: number): Promise<void> {
     setTimeout(resolve, milliseconds);
   });
 }
-

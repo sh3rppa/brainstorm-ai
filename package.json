@@ -7,13 +7,19 @@
     "dev": "next dev apps/web",
     "build": "next build apps/web",
     "start": "next start apps/web",
+    "postinstall": "prisma generate",
+    "prisma:generate": "prisma generate",
+    "db:seed": "prisma db seed",
     "check": "tsc -p apps/web/tsconfig.json --noEmit && node --check backend/server.ts && node --check frontend/public/app.js",
     "test": "node tests/api.test.js",
     "legacy:start": "node backend/server.ts",
     "legacy:check": "node --check backend/server.ts && node --check frontend/public/app.js"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
     "next": "^15.0.0",
+    "pg": "^8.22.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -25,6 +31,7 @@
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.39.4",
     "eslint-config-next": "^15.5.19",
+    "prisma": "^7.8.0",
     "tailwindcss": "^4.3.1",
     "typescript": "^5.8.0"
   },
